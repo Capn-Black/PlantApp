@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --color-leaf-50: #f0fdf4;
+  --color-leaf-100: #dcfce7;
+  --color-leaf-200: #bbf7d0;
+  --color-leaf-400: #4ade80;
+  --color-leaf-600: #16a34a;
+  --color-leaf-700: #15803d;
+  --color-leaf-800: #166534;
+}
+
+/* Styled horizontal scrollbar for the grid */
+.grid-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.grid-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+.grid-scroll::-webkit-scrollbar-thumb {
+  background: #86efac;
+  border-radius: 9999px;
+}

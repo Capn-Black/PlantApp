@@ -1,0 +1,28 @@
+version: 1
+
+# AWS Amplify Hosting build spec for PlantApp
+# Amplify will run this automatically on every push to your connected branch.
+
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci                          # clean install from package-lock.json
+    build:
+      commands:
+        - npm run build                   # vite build → dist/
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*                 # cache deps between builds
+
+  # Environment variables are set in the Amplify Console, not here.
+  # After deploying the SAM stack, copy the AmplifyEnvVars output values
+  # into Amplify Hosting > App settings > Environment variables:
+  #
+  #   VITE_API_URL              = https://<id>.execute-api.<region>.amazonaws.com
+  #   VITE_USER_POOL_ID         = <region>_XXXXXXXXX
+  #   VITE_USER_POOL_CLIENT_ID  = <26-char client id>

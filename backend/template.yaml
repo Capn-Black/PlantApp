@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: PlantApp backend — Lambda functions + API Gateway + DynamoDB
+
+# ── Global defaults applied to all Lambda functions ──────────────────────────
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]       # Graviton2 — cheaper & faster than x86
+    Timeout: 10
+    MemorySize: 256
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref GardeningTable
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+
+# ── Parameters ────────────────────────────────────────────────────────────────
+Parameters:
+  AllowedOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      CORS allowed origin for API responses.
+      Set to your Amplify URL in production (e.g. https://main.abc123.amplifyapp.com)
+
+  PerenualApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >
+      Perenual API key. Pass via --parameter-overrides or enter when prompted.
+      Get a free key at https://perenual.com/api
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── Cognito User Pool ────────────────────────────────────────────────────────
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: plantapp-users
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: plantapp-web
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false          # Public client — no secret for SPA
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # ── DynamoDB table (matches README schema) ──────────────────────────────────
+  GardeningTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: GardeningAppData
+      BillingMode: PAY_PER_REQUEST      # Free tier friendly — pay only per request
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+
+  # ── Shared IAM policy — all functions get read/write on the table ────────────
+  DynamoPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:UpdateItem
+            Resource: !GetAtt GardeningTable.Arn
+
+  # ── API Gateway (HTTP API — cheaper than REST API) ───────────────────────────
+  PlantApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+              audience:
+                - !Ref UserPoolClient
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedOrigin
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
+          - DELETE
+          - OPTIONS
+
+  # ── Lambda: GET /gardens/{userId}/plants ─────────────────────────────────────
+  GetPlantsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: plantapp-getPlants
+      CodeUri: functions/getPlants/
+      Handler: index.handler
+      Policies:
+        - !Ref DynamoPolicy
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PlantApi
+            Path: /gardens/{userId}/plants
+            Method: GET
+
+  # ── Lambda: POST /gardens/{userId}/plants ────────────────────────────────────
+  AddPlantFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: plantapp-addPlant
+      CodeUri: functions/addPlant/
+      Handler: index.handler
+      Policies:
+        - !Ref DynamoPolicy
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PlantApi
+            Path: /gardens/{userId}/plants
+            Method: POST
+
+  # ── Lambda: DELETE /gardens/{userId}/plants/{plantId} ────────────────────────
+  RemovePlantFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: plantapp-removePlant
+      CodeUri: functions/removePlant/
+      Handler: index.handler
+      Policies:
+        - !Ref DynamoPolicy
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PlantApi
+            Path: /gardens/{userId}/plants/{plantId}
+            Method: DELETE
+
+  # ── Lambda: GET /zone/{zipCode} ──────────────────────────────────────────────
+  GetZoneFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: plantapp-getZone
+      CodeUri: functions/getZone/
+      Handler: index.handler
+      # No DynamoDB access needed — calls USDA API directly
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PlantApi
+            Path: /zone/{zipCode}
+            Method: GET
+
+  # /plants/search is public — no auth needed to browse plants
+  SearchPlantsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: plantapp-searchPlants
+      CodeUri: functions/searchPlants/
+      Handler: index.handler
+      # No DynamoDB access needed — proxies Perenual API
+      Environment:
+        Variables:
+          PERENUAL_API_KEY: !Ref PerenualApiKey
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PlantApi
+            Path: /plants/search
+            Method: GET
+            Auth:
+              Authorizer: NONE   # Public endpoint — no JWT required
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+Outputs:
+  ApiBaseUrl:
+    Description: Base URL for the PlantApp API — paste this into gardenService.js
+    Value: !Sub 'https://${PlantApi}.execute-api.${AWS::Region}.amazonaws.com'
+
+  TableName:
+    Description: DynamoDB table name
+    Value: !Ref GardeningTable
+
+  UserPoolId:
+    Description: Cognito User Pool ID — set as VITE_USER_POOL_ID in Amplify Hosting
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Description: Cognito App Client ID — set as VITE_USER_POOL_CLIENT_ID in Amplify Hosting
+    Value: !Ref UserPoolClient
+
+  AmplifyEnvVars:
+    Description: Paste these into Amplify Hosting > Environment variables
+    Value: !Sub |
+      VITE_API_URL=https://${PlantApi}.execute-api.${AWS::Region}.amazonaws.com
+      VITE_USER_POOL_ID=${UserPool}
+      VITE_USER_POOL_CLIENT_ID=${UserPoolClient}
