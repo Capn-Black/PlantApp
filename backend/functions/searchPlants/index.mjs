@@ -19,7 +19,7 @@
  * }
  */
 
-import { ok, badRequest, serverError } from '../../shared/response.mjs';
+import { ok, badRequest, serverError } from './response.mjs';
 
 const PERENUAL_BASE = 'https://perenual.com/api';
 
@@ -84,7 +84,8 @@ export async function handler(event) {
     const response = await fetch(url.toString());
 
     if (!response.ok) {
-      throw new Error(`Perenual API returned ${response.status}`);
+      const errBody = await response.text();
+      throw new Error(`Perenual API returned ${response.status}: ${errBody}`);
     }
 
     const data = await response.json();

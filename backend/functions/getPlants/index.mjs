@@ -11,8 +11,8 @@
  */
 
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLE_NAME } from '../../shared/dynamoClient.mjs';
-import { ok, badRequest, serverError } from '../../shared/response.mjs';
+import { docClient, TABLE_NAME } from './dynamoClient.mjs';
+import { ok, badRequest, serverError } from './response.mjs';
 
 // Full month name → short name for the UI grid
 const MONTH_MAP = {

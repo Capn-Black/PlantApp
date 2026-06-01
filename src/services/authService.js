@@ -19,7 +19,6 @@ import {
   signUp,
   signOut,
   confirmSignUp,
-  getCurrentUser,
   fetchAuthSession,
   resetPassword,
   confirmResetPassword,
@@ -56,6 +55,7 @@ function fakeDelay(ms = 300) {
 
 /**
  * Get the currently signed-in user, or null if not authenticated.
+ * Reads sub, email from the ID token payload — avoids a separate API call.
  * @returns {Promise<{ userId, username, email } | null>}
  */
 export async function getCurrentAuthUser() {
@@ -64,11 +64,15 @@ export async function getCurrentAuthUser() {
     return MOCK_USER;
   }
   try {
-    const user = await getCurrentUser();
+    const session = await fetchAuthSession({ forceRefresh: false });
+    const idToken = session.tokens?.idToken;
+    if (!idToken) return null;
+    // Decode payload from the ID token (it's a JWT — middle segment is base64 JSON)
+    const payload = idToken.payload;
     return {
-      userId:   user.userId,
-      username: user.username,
-      email:    user.signInDetails?.loginId ?? user.username,
+      userId:   payload.sub,
+      username: payload.email ?? payload['cognito:username'],
+      email:    payload.email ?? '',
     };
   } catch {
     return null;
@@ -76,15 +80,18 @@ export async function getCurrentAuthUser() {
 }
 
 /**
- * Get the current JWT access token for API calls.
- * Returns null in mock mode (API calls use the hardcoded mock userId).
+ * Get the current JWT ID token for API Gateway calls.
+ * API Gateway's Cognito JWT authorizer validates the ID token audience
+ * against the User Pool Client ID.
+ * Returns null in mock mode.
  * @returns {Promise<string | null>}
  */
 export async function getAccessToken() {
   if (USE_MOCK_AUTH) return null;
   try {
-    const session = await fetchAuthSession();
-    return session.tokens?.accessToken?.toString() ?? null;
+    const session = await fetchAuthSession({ forceRefresh: false });
+    // Use idToken — API Gateway JWT authorizer checks audience against UserPoolClientId
+    return session.tokens?.idToken?.toString() ?? null;
   } catch {
     return null;
   }

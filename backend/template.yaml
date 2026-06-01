@@ -7,7 +7,7 @@ Description: PlantApp backend — Lambda functions + API Gateway + DynamoDB
 Globals:
   Function:
     Runtime: nodejs22.x
-    Architectures: [arm64]       # Graviton2 — cheaper & faster than x86
+    Architectures: [arm64]
     Timeout: 10
     MemorySize: 256
     Environment:
@@ -21,16 +21,14 @@ Parameters:
     Type: String
     Default: '*'
     Description: >
-      CORS allowed origin for API responses.
-      Set to your Amplify URL in production (e.g. https://main.abc123.amplifyapp.com)
+      CORS allowed origin. Set to your Amplify URL in production.
 
   PerenualApiKey:
     Type: String
     NoEcho: true
     Default: ''
     Description: >
-      Perenual API key. Pass via --parameter-overrides or enter when prompted.
-      Get a free key at https://perenual.com/api
+      Perenual API key. Get a free key at https://perenual.com/api
 
 # ── Resources ─────────────────────────────────────────────────────────────────
 Resources:
@@ -60,18 +58,18 @@ Resources:
     Properties:
       ClientName: plantapp-web
       UserPoolId: !Ref UserPool
-      GenerateSecret: false          # Public client — no secret for SPA
+      GenerateSecret: false
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
       PreventUserExistenceErrors: ENABLED
 
-  # ── DynamoDB table (matches README schema) ──────────────────────────────────
+  # ── DynamoDB table ───────────────────────────────────────────────────────────
   GardeningTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: GardeningAppData
-      BillingMode: PAY_PER_REQUEST      # Free tier friendly — pay only per request
+      BillingMode: PAY_PER_REQUEST
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
@@ -83,7 +81,7 @@ Resources:
         - AttributeName: SK
           AttributeType: S
 
-  # ── Shared IAM policy — all functions get read/write on the table ────────────
+  # ── Shared IAM policy ────────────────────────────────────────────────────────
   DynamoPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -99,7 +97,7 @@ Resources:
               - dynamodb:UpdateItem
             Resource: !GetAtt GardeningTable.Arn
 
-  # ── API Gateway (HTTP API — cheaper than REST API) ───────────────────────────
+  # ── API Gateway ──────────────────────────────────────────────────────────────
   PlantApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -175,14 +173,13 @@ Resources:
             Path: /gardens/{userId}/plants/{plantId}
             Method: DELETE
 
-  # ── Lambda: GET /zone/{zipCode} ──────────────────────────────────────────────
+  # ── Lambda: GET /zone/{zipCode} — public, no auth ────────────────────────────
   GetZoneFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: plantapp-getZone
       CodeUri: functions/getZone/
       Handler: index.handler
-      # No DynamoDB access needed — calls USDA API directly
       Events:
         Api:
           Type: HttpApi
@@ -190,15 +187,16 @@ Resources:
             ApiId: !Ref PlantApi
             Path: /zone/{zipCode}
             Method: GET
+            Auth:
+              Authorizer: NONE
 
-  # /plants/search is public — no auth needed to browse plants
+  # ── Lambda: GET /plants/search — public, no auth ─────────────────────────────
   SearchPlantsFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: plantapp-searchPlants
       CodeUri: functions/searchPlants/
       Handler: index.handler
-      # No DynamoDB access needed — proxies Perenual API
       Environment:
         Variables:
           PERENUAL_API_KEY: !Ref PerenualApiKey
@@ -210,12 +208,12 @@ Resources:
             Path: /plants/search
             Method: GET
             Auth:
-              Authorizer: NONE   # Public endpoint — no JWT required
+              Authorizer: NONE
 
 # ── Outputs ───────────────────────────────────────────────────────────────────
 Outputs:
   ApiBaseUrl:
-    Description: Base URL for the PlantApp API — paste this into gardenService.js
+    Description: Base URL for the PlantApp API
     Value: !Sub 'https://${PlantApi}.execute-api.${AWS::Region}.amazonaws.com'
 
   TableName:

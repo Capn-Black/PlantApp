@@ -17,8 +17,8 @@
  */
 
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLE_NAME } from '../../shared/dynamoClient.mjs';
-import { created, badRequest, serverError } from '../../shared/response.mjs';
+import { docClient, TABLE_NAME } from './dynamoClient.mjs';
+import { created, badRequest, serverError } from './response.mjs';
 import { randomUUID } from 'crypto';
 
 // Short month name → full month name for DynamoDB storage

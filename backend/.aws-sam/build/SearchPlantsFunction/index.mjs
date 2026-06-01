@@ -19,7 +19,7 @@
  * }
  */
 
-import { ok, badRequest, serverError } from '../../shared/response.mjs';
+import { ok, badRequest, serverError } from './response.mjs';
 
 const PERENUAL_BASE = 'https://perenual.com/api';
 

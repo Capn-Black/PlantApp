@@ -8,8 +8,8 @@
  */
 
 import { DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLE_NAME } from '../../shared/dynamoClient.mjs';
-import { noContent, badRequest, serverError } from '../../shared/response.mjs';
+import { docClient, TABLE_NAME } from './dynamoClient.mjs';
+import { noContent, badRequest, serverError } from './response.mjs';
 
 export async function handler(event) {
   try {

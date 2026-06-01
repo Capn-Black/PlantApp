@@ -16,7 +16,7 @@
  * Response: 200 { zipCode, zone, coordinates, temperature_range }
  */
 
-import { ok, badRequest, notFound, serverError } from '../../shared/response.mjs';
+import { ok, badRequest, notFound, serverError } from './response.mjs';
 
 const USDA_BASE_URL = 'https://phzmapi.org';
 

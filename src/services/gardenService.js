@@ -91,7 +91,6 @@ function toDbRecord(userId, plant) {
 // ── Real API helpers ──────────────────────────────────────────────────────────
 
 async function apiFetch(path, options = {}) {
-  // Attach Cognito JWT token when available
   const { getAccessToken } = await import('./authService');
   const token = await getAccessToken();
 
@@ -106,47 +105,58 @@ async function apiFetch(path, options = {}) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? `API error ${res.status}`);
   }
-  // 204 No Content has no body
   if (res.status === 204) return null;
   return res.json();
+}
+
+/**
+ * Get the current user's ID.
+ * Mock → hardcoded seed user. Real → Cognito sub from the JWT.
+ */
+async function getCurrentUserId() {
+  if (USE_MOCK) return 'usr_98765';
+  const { getCurrentAuthUser } = await import('./authService');
+  const user = await getCurrentAuthUser();
+  if (!user?.userId) throw new Error('Not authenticated');
+  return user.userId;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Fetch the current user's metadata (zone, zip code, etc.)
+ * Falls back gracefully if no metadata record exists yet for this user.
  */
-export async function getUserMetadata(userId = 'usr_98765') {
+export async function getUserMetadata(userId) {
+  const uid = userId ?? await getCurrentUserId();
   if (USE_MOCK) {
     await fakeDelay(150);
     const db = await getMock();
-    const record = db.getItem(`USER#${userId}`, 'METADATA');
-    if (!record) throw new Error(`User ${userId} not found`);
-    return {
-      userId,
-      zipCode:       record.ZipCode,
-      hardinessZone: record.HardinessZone,
-      createdAt:     record.CreatedAt,
-    };
+    const record = db.getItem(`USER#${uid}`, 'METADATA');
+    if (!record) throw new Error(`User ${uid} not found`);
+    return { userId: uid, zipCode: record.ZipCode, hardinessZone: record.HardinessZone, createdAt: record.CreatedAt };
   }
-  // Real API — user metadata endpoint (added in Step 6 with Cognito)
-  return apiFetch(`/gardens/${userId}/metadata`);
+  // Metadata record may not exist yet for new users — return a safe default
+  try {
+    return await apiFetch(`/gardens/${uid}/metadata`);
+  } catch {
+    return { userId: uid, zipCode: '', hardinessZone: '', createdAt: new Date().toISOString() };
+  }
 }
 
 /**
  * Fetch all plants for a user.
  * @returns {Promise<Array>}
  */
-export async function getPlants(userId = 'usr_98765') {
+export async function getPlants(userId) {
+  const uid = userId ?? await getCurrentUserId();
   if (USE_MOCK) {
     await fakeDelay(300);
     const db = await getMock();
-    const items = db.queryByPK(`USER#${userId}`);
-    return items
-      .filter((i) => i.SK.startsWith('PLANT#'))
-      .map(toPlantViewModel);
+    const items = db.queryByPK(`USER#${uid}`);
+    return items.filter((i) => i.SK.startsWith('PLANT#')).map(toPlantViewModel);
   }
-  const data = await apiFetch(`/gardens/${userId}/plants`);
+  const data = await apiFetch(`/gardens/${uid}/plants`);
   return data.plants;
 }
 
@@ -154,16 +164,17 @@ export async function getPlants(userId = 'usr_98765') {
  * Add a new plant to the user's garden.
  * @returns {Promise<object>} Saved plant view-model
  */
-export async function addPlant(plant, userId = 'usr_98765') {
+export async function addPlant(plant, userId) {
+  const uid = userId ?? await getCurrentUserId();
   if (USE_MOCK) {
     await fakeDelay(400);
     const db = await getMock();
     const newPlant = { ...plant, id: plant.id ?? `plt_${nanoid(8)}` };
-    const record = toDbRecord(userId, newPlant);
+    const record = toDbRecord(uid, newPlant);
     db.putItem(record);
     return toPlantViewModel(record);
   }
-  const data = await apiFetch(`/gardens/${userId}/plants`, {
+  const data = await apiFetch(`/gardens/${uid}/plants`, {
     method: 'POST',
     body: JSON.stringify(plant),
   });
@@ -174,14 +185,15 @@ export async function addPlant(plant, userId = 'usr_98765') {
  * Remove a plant from the user's garden.
  * @returns {Promise<void>}
  */
-export async function removePlant(plantId, userId = 'usr_98765') {
+export async function removePlant(plantId, userId) {
+  const uid = userId ?? await getCurrentUserId();
   if (USE_MOCK) {
     await fakeDelay(300);
     const db = await getMock();
-    db.deleteItem(`USER#${userId}`, `PLANT#${plantId}`);
+    db.deleteItem(`USER#${uid}`, `PLANT#${plantId}`);
     return;
   }
-  await apiFetch(`/gardens/${userId}/plants/${plantId}`, { method: 'DELETE' });
+  await apiFetch(`/gardens/${uid}/plants/${plantId}`, { method: 'DELETE' });
 }
 
 /**

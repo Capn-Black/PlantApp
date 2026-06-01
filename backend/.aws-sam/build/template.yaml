@@ -18,16 +18,14 @@ Parameters:
   AllowedOrigin:
     Type: String
     Default: '*'
-    Description: 'CORS allowed origin for API responses. Set to your Amplify URL in
-      production (e.g. https://main.abc123.amplifyapp.com)
+    Description: 'CORS allowed origin. Set to your Amplify URL in production.
 
       '
   PerenualApiKey:
     Type: String
     NoEcho: true
     Default: ''
-    Description: 'Perenual API key. Pass via --parameter-overrides or enter when prompted.
-      Get a free key at https://perenual.com/api
+    Description: 'Perenual API key. Get a free key at https://perenual.com/api
 
       '
 Resources:
@@ -186,6 +184,8 @@ Resources:
               Ref: PlantApi
             Path: /zone/{zipCode}
             Method: GET
+            Auth:
+              Authorizer: NONE
     Metadata:
       SamResourceId: GetZoneFunction
   SearchPlantsFunction:
@@ -212,7 +212,7 @@ Resources:
       SamResourceId: SearchPlantsFunction
 Outputs:
   ApiBaseUrl:
-    Description: "Base URL for the PlantApp API \u2014 paste this into gardenService.js"
+    Description: Base URL for the PlantApp API
     Value:
       Fn::Sub: https://${PlantApi}.execute-api.${AWS::Region}.amazonaws.com
   TableName:
